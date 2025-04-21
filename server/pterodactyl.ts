@@ -100,6 +100,227 @@ async function pterodactylClientRequest(
 }
 
 export function setupPterodactyl(app: Express) {
+  // Get Pterodactyl infrastructure information
+  app.get("/api/pterodactyl/locations", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      log.warn("Unauthorized access attempt to /api/pterodactyl/locations");
+      return res.status(401).send("Unauthorized");
+    }
+    
+    try {
+      log.info(`User ${req.user.id} requested server locations`);
+      const locations = await storage.getServerLocations();
+      return res.json(locations);
+    } catch (error) {
+      log.error(`Error fetching server locations`, error);
+      return res.status(500).send("Failed to fetch server locations");
+    }
+  });
+  
+  app.get("/api/pterodactyl/nodes", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      log.warn("Unauthorized access attempt to /api/pterodactyl/nodes");
+      return res.status(401).send("Unauthorized");
+    }
+    
+    try {
+      log.info(`User ${req.user.id} requested server nodes`);
+      const nodes = await storage.getServerNodes();
+      return res.json(nodes);
+    } catch (error) {
+      log.error(`Error fetching server nodes`, error);
+      return res.status(500).send("Failed to fetch server nodes");
+    }
+  });
+  
+  app.get("/api/pterodactyl/nests", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      log.warn("Unauthorized access attempt to /api/pterodactyl/nests");
+      return res.status(401).send("Unauthorized");
+    }
+    
+    try {
+      log.info(`User ${req.user.id} requested server nests`);
+      const nests = await storage.getServerNests();
+      return res.json(nests);
+    } catch (error) {
+      log.error(`Error fetching server nests`, error);
+      return res.status(500).send("Failed to fetch server nests");
+    }
+  });
+  
+  app.get("/api/pterodactyl/nests/:nestId/eggs", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      log.warn(`Unauthorized access attempt to /api/pterodactyl/nests/${req.params.nestId}/eggs`);
+      return res.status(401).send("Unauthorized");
+    }
+    
+    try {
+      const nestId = parseInt(req.params.nestId);
+      if (isNaN(nestId)) {
+        return res.status(400).send("Invalid nest ID");
+      }
+      
+      log.info(`User ${req.user.id} requested eggs for nest ${nestId}`);
+      const eggs = await storage.getServerEggsByNestId(nestId);
+      return res.json(eggs);
+    } catch (error) {
+      log.error(`Error fetching eggs for nest ${req.params.nestId}`, error);
+      return res.status(500).send("Failed to fetch server eggs");
+    }
+  });
+  
+  // Create a new server
+  app.post("/api/pterodactyl/servers", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      log.warn("Unauthorized access attempt to create server");
+      return res.status(401).send("Unauthorized");
+    }
+    
+    try {
+      log.info(`User ${req.user.id} requested server creation`);
+      const createServerData = req.body;
+      
+      // Get user's subscription to check if they can create more servers
+      const subscription = await storage.getUserSubscription(req.user.id);
+      if (!subscription) {
+        log.warn(`User ${req.user.id} has no active subscription`);
+        return res.status(400).send("No active subscription found. Please subscribe to create servers.");
+      }
+      
+      // Get subscription plan details
+      const plan = await storage.getSubscriptionPlanById(subscription.planId);
+      if (!plan) {
+        log.warn(`Subscription plan ${subscription.planId} not found`);
+        return res.status(500).send("Subscription plan not found");
+      }
+      
+      // Check if user has reached their server limit
+      const userServers = await storage.getServers(req.user.id);
+      if (userServers.length >= plan.serverLimit) {
+        log.warn(`User ${req.user.id} has reached server limit (${plan.serverLimit})`);
+        return res.status(400).send(`You have reached your server limit (${plan.serverLimit}). Please upgrade your plan to create more servers.`);
+      }
+      
+      // Create the server through the Pterodactyl API (implemented in storage)
+      log.debug(`Creating server for user ${req.user.id}`);
+      const server = await storage.createPterodactylServer(req.user.id, createServerData);
+      
+      log.info(`Successfully created server ${server.id} for user ${req.user.id}`);
+      return res.status(201).json(server);
+    } catch (error: any) {
+      log.error(`Error creating server for user ${req.user.id}`, error);
+      return res.status(500).send(`Failed to create server: ${error.message}`);
+    }
+  });
+  
+  // Server backups
+  app.get("/api/servers/:id/backups", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      log.warn(`Unauthorized access attempt to /api/servers/${req.params.id}/backups`);
+      return res.status(401).send("Unauthorized");
+    }
+    
+    try {
+      const serverId = req.params.id;
+      log.info(`User ${req.user.id} requested backups for server ${serverId}`);
+      
+      // Check if server exists and belongs to the user
+      const server = await storage.getServerByPterodactylId(serverId);
+      
+      if (!server || server.userId !== req.user.id) {
+        log.warn(`User ${req.user.id} attempted to access backups for server ${serverId} that doesn't exist or doesn't belong to them`);
+        return res.status(404).send("Server not found");
+      }
+      
+      // Get backups from database
+      const backups = await storage.getServerBackups(server.id);
+      
+      log.info(`Successfully returned ${backups.length} backups for server ${serverId}`);
+      return res.json(backups);
+    } catch (error: any) {
+      log.error(`Error fetching backups for server ${req.params.id}`, error);
+      return res.status(500).send("Failed to fetch server backups");
+    }
+  });
+  
+  // Create backup
+  app.post("/api/servers/:id/backups", async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      log.warn(`Unauthorized access attempt to create backup for server ${req.params.id}`);
+      return res.status(401).send("Unauthorized");
+    }
+    
+    try {
+      const serverId = req.params.id;
+      const { name } = req.body;
+      
+      log.info(`User ${req.user.id} requested backup creation for server ${serverId}`);
+      
+      // Check if server exists and belongs to the user
+      const server = await storage.getServerByPterodactylId(serverId);
+      
+      if (!server || server.userId !== req.user.id) {
+        log.warn(`User ${req.user.id} attempted to create backup for server ${serverId} that doesn't exist or doesn't belong to them`);
+        return res.status(404).send("Server not found");
+      }
+      
+      // Get user's pterodactyl API key
+      const apiKey = req.user.pterodactylApiKey;
+      
+      if (!apiKey) {
+        log.warn(`User ${req.user.id} has no Pterodactyl API key set`);
+        return res.status(400).send("Pterodactyl API key not set. Please set it in your profile settings.");
+      }
+      
+      // Check user's subscription for backup limits
+      const subscription = await storage.getUserSubscription(req.user.id);
+      if (!subscription) {
+        log.warn(`User ${req.user.id} has no active subscription`);
+        return res.status(400).send("No active subscription found");
+      }
+      
+      const plan = await storage.getSubscriptionPlanById(subscription.planId);
+      if (!plan) {
+        log.warn(`Subscription plan ${subscription.planId} not found`);
+        return res.status(500).send("Subscription plan not found");
+      }
+      
+      // Check if user has reached backup limit
+      const existingBackups = await storage.getServerBackups(server.id);
+      
+      // If backupLimit is 0, it means unlimited backups
+      if (plan.backupLimit > 0 && existingBackups.length >= plan.backupLimit) {
+        log.warn(`User ${req.user.id} has reached backup limit (${plan.backupLimit})`);
+        return res.status(400).send(`You have reached your backup limit (${plan.backupLimit}). Please upgrade your plan or delete some backups.`);
+      }
+      
+      // Create backup in Pterodactyl
+      log.debug(`Creating backup for server ${serverId} through Pterodactyl API`);
+      const backupResponse = await pterodactylClientRequest(`servers/${serverId}/backups`, apiKey, "POST", { name });
+      
+      // Extract backup data from response
+      const backupData = backupResponse.data?.attributes;
+      if (!backupData) {
+        throw new Error("Invalid backup response from Pterodactyl");
+      }
+      
+      // Store backup in our database
+      log.debug(`Storing backup information in database`);
+      const backup = await storage.createServerBackup({
+        serverId: server.id,
+        pterodactylBackupId: backupData.uuid,
+        name: backupData.name || name,
+        completed: false
+      });
+      
+      log.info(`Successfully created backup for server ${serverId}`);
+      return res.status(201).json(backup);
+    } catch (error: any) {
+      log.error(`Error creating backup for server ${req.params.id}`, error);
+      return res.status(500).send(`Failed to create backup: ${error.message}`);
+    }
+  });
   // List servers for authenticated user
   app.get("/api/servers", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) {

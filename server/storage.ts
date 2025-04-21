@@ -18,6 +18,7 @@ import {
   type CreateServerData
 } from "@shared/schema";
 import session from "express-session";
+import { Store as SessionStore } from "express-session";
 import createMemoryStore from "memorystore";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
@@ -101,7 +102,7 @@ export interface IStorage {
   getUserSettings(userId: number): Promise<any>;
 
   // Session store
-  sessionStore: session.SessionStore;
+  sessionStore: SessionStore;
 }
 
 export class MemStorage implements IStorage {
