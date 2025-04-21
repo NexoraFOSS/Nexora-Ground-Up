@@ -23,9 +23,30 @@ export interface SessionConfig {
   maxAge: number;
 }
 
+export interface PterodactylPlan {
+  id: string;
+  name: string;
+  memory: number;
+  disk: number;
+  cpu: number;
+  swap: number;
+  ioWeight: number;
+  price: number;
+  databases: number;
+  allocations: number;
+  backups: number;
+}
+
 export interface PterodactylConfig {
   baseUrl: string;
   adminApiKey?: string;
+  defaultNestId: number;
+  defaultEggId: number;
+  defaultAllocationId: number;
+  defaultNodeId: number;
+  defaultImage: string;
+  locations: Record<string, string>;
+  plans: PterodactylPlan[];
 }
 
 export interface StripeConfig {

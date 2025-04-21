@@ -39,7 +39,54 @@ const config = {
   // Pterodactyl Panel API
   pterodactyl: {
     baseUrl: process.env.PTERODACTYL_URL || 'https://panel.example.com',
-    adminApiKey: process.env.PTERODACTYL_ADMIN_KEY
+    adminApiKey: process.env.PTERODACTYL_ADMIN_KEY,
+    defaultNestId: parseInt(process.env.PTERODACTYL_DEFAULT_NEST_ID || '1'),
+    defaultEggId: parseInt(process.env.PTERODACTYL_DEFAULT_EGG_ID || '1'),
+    defaultAllocationId: parseInt(process.env.PTERODACTYL_DEFAULT_ALLOCATION_ID || '1'),
+    defaultNodeId: parseInt(process.env.PTERODACTYL_DEFAULT_NODE_ID || '1'),
+    defaultImage: process.env.PTERODACTYL_DEFAULT_IMAGE || 'quay.io/pterodactyl/core:java',
+    locations: JSON.parse(process.env.PTERODACTYL_LOCATIONS || '{"1":"Primary Location"}'),
+    plans: [
+      {
+        id: 'plan-1',
+        name: 'Basic',
+        memory: 1024,
+        disk: 10240,
+        cpu: 100,
+        swap: 0,
+        ioWeight: 500,
+        price: 5.00,
+        databases: 1,
+        allocations: 1,
+        backups: 1
+      },
+      {
+        id: 'plan-2',
+        name: 'Premium',
+        memory: 2048,
+        disk: 20480,
+        cpu: 200,
+        swap: 0,
+        ioWeight: 500,
+        price: 10.00,
+        databases: 2,
+        allocations: 2,
+        backups: 2
+      },
+      {
+        id: 'plan-3',
+        name: 'Professional',
+        memory: 4096,
+        disk: 40960,
+        cpu: 300,
+        swap: 0,
+        ioWeight: 500,
+        price: 20.00,
+        databases: 3,
+        allocations: 3,
+        backups: 3
+      }
+    ]
   },
   
   // Stripe payment processing

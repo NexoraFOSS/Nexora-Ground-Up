@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -134,6 +134,68 @@ export const apiKeys = pgTable("api_keys", {
   expiresAt: timestamp("expires_at"),
 });
 
+// Server backup model
+export const serverBackups = pgTable("server_backups", {
+  id: serial("id").primaryKey(),
+  serverId: integer("server_id").notNull(),
+  pterodactylBackupId: text("pterodactyl_backup_id").notNull().unique(),
+  name: text("name"),
+  size: integer("size"),
+  completed: boolean("completed").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  url: text("url"),
+});
+
+// Server locations
+export const serverLocations = pgTable("server_locations", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id").notNull().unique(),
+  shortCode: varchar("short_code", { length: 10 }).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+});
+
+// Server nodes
+export const serverNodes = pgTable("server_nodes", {
+  id: serial("id").primaryKey(),
+  nodeId: integer("node_id").notNull().unique(),
+  locationId: integer("location_id").notNull(),
+  name: text("name").notNull(),
+  fqdn: text("fqdn").notNull(), // Fully qualified domain name
+  scheme: varchar("scheme", { length: 10 }).notNull().default("https"),
+  memory: integer("memory").notNull(),
+  memoryOverallocate: integer("memory_overallocate").notNull().default(0),
+  disk: integer("disk").notNull(),
+  diskOverallocate: integer("disk_overallocate").notNull().default(0),
+  uploadLimit: integer("upload_limit").notNull().default(100),
+  daemonBase: text("daemon_base").notNull().default("/var/lib/pterodactyl/volumes"),
+  daemonSftp: integer("daemon_sftp").notNull().default(2022),
+  daemonListen: integer("daemon_listen").notNull().default(8080),
+  maintenance: boolean("maintenance").default(false),
+});
+
+// Server nests (game types)
+export const serverNests = pgTable("server_nests", {
+  id: serial("id").primaryKey(),
+  nestId: integer("nest_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  author: text("author"),
+});
+
+// Server eggs (game configurations)
+export const serverEggs = pgTable("server_eggs", {
+  id: serial("id").primaryKey(),
+  eggId: integer("egg_id").notNull().unique(),
+  nestId: integer("nest_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  dockerImage: text("docker_image").notNull(),
+  config: jsonb("config"),
+  startup: text("startup"),
+});
+
 // Create insert schemas for entities
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -166,9 +228,52 @@ export const insertTicketReplySchema = createInsertSchema(ticketReplies).omit({
   createdAt: true,
 });
 
+export const insertServerBackupSchema = createInsertSchema(serverBackups).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+
+export const insertServerLocationSchema = createInsertSchema(serverLocations).omit({
+  id: true,
+});
+
+export const insertServerNodeSchema = createInsertSchema(serverNodes).omit({
+  id: true,
+});
+
+export const insertServerNestSchema = createInsertSchema(serverNests).omit({
+  id: true,
+});
+
+export const insertServerEggSchema = createInsertSchema(serverEggs).omit({
+  id: true,
+});
+
 export const loginSchema = z.object({
   username: z.string().min(3).max(50),
   password: z.string().min(6).max(100),
+});
+
+// Schema for creating a new server
+export const createServerSchema = z.object({
+  name: z.string().min(3).max(191),
+  nodeId: z.number(),
+  locationId: z.number().optional(),
+  nestId: z.number(),
+  eggId: z.number(),
+  planId: z.string(),
+  memory: z.number().min(128),
+  disk: z.number().min(1024),
+  cpu: z.number().min(10),
+  swap: z.number().default(0),
+  io: z.number().default(500),
+  databases: z.number().default(0),
+  allocations: z.number().default(0),
+  backups: z.number().default(0),
+  environment: z.record(z.string(), z.string()).optional(),
+  startupCommand: z.string().optional(),
+  dedicatedIp: z.boolean().default(false),
 });
 
 // Types for models
@@ -187,3 +292,16 @@ export type Invoice = typeof invoices.$inferSelect;
 export type LoginHistory = typeof loginHistory.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type LoginData = z.infer<typeof loginSchema>;
+
+// New types for Pterodactyl integration
+export type ServerBackup = typeof serverBackups.$inferSelect;
+export type InsertServerBackup = z.infer<typeof insertServerBackupSchema>;
+export type ServerLocation = typeof serverLocations.$inferSelect;
+export type InsertServerLocation = z.infer<typeof insertServerLocationSchema>;
+export type ServerNode = typeof serverNodes.$inferSelect;
+export type InsertServerNode = z.infer<typeof insertServerNodeSchema>;
+export type ServerNest = typeof serverNests.$inferSelect;
+export type InsertServerNest = z.infer<typeof insertServerNestSchema>;
+export type ServerEgg = typeof serverEggs.$inferSelect;
+export type InsertServerEgg = z.infer<typeof insertServerEggSchema>;
+export type CreateServerData = z.infer<typeof createServerSchema>;
