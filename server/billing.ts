@@ -1,7 +1,7 @@
 import { Express, Request, Response } from "express";
 import { storage } from "./storage";
 import crypto from "crypto";
-import config from "../config";
+import config from "../config.js";
 import type { Config } from "../shared/config-types";
 
 // In a real implementation, this would use Stripe's SDK

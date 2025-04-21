@@ -5,7 +5,7 @@ import session from "express-session";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 import crypto from "crypto";
-import config from "../config";
+import config from "../config.js";
 import type { Config } from "../shared/config-types";
 
 declare global {

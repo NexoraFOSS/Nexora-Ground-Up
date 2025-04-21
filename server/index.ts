@@ -3,7 +3,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 // Import config
-import config from "../config";
+import config from "../config.js";
 import type { Config } from "../shared/config-types";
 
 const app = express();

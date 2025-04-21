@@ -2,7 +2,7 @@ import { Express, Request, Response } from "express";
 import fetch from "node-fetch";
 import { storage } from "./storage";
 import { PterodactylServer, PterodactylApiResponse, ServerUsage, PterodactylResourceResponse } from "./types";
-import config from "../config";
+import config from "../config.js";
 import type { Config } from "../shared/config-types";
 
 // Helper function to make API requests to Pterodactyl
