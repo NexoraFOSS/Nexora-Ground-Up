@@ -1,3 +1,5 @@
+# THIS IS A VERSION OF NEXORA BUILT FROM THE GROUND-UP! IT IS IN ALPHA STAGES AND IS NOT COMPLETE
+
 # Nexora - Game Server Management Client Area
 
 Nexora is a full-stack web application that serves as a modern client area for managing game servers hosted via Pterodactyl Panel. It provides a comprehensive dashboard for users to manage their game servers, billing, and support tickets.
