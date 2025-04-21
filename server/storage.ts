@@ -24,6 +24,7 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { PterodactylServer, PterodactylApiResponse, ServerUsage } from "./types";
 import config from "../config.js";
+import { pterodactylRequest, pterodactylClientRequest } from "./pterodactyl";
 
 const scryptAsync = promisify(scrypt);
 const MemoryStore = createMemoryStore(session);
@@ -319,7 +320,11 @@ export class MemStorage implements IStorage {
         name: "Vanilla Minecraft",
         description: "Minecraft Vanilla server",
         dockerImage: "ghcr.io/pterodactyl/yolks:java_17",
-        config: { startup: { done: "Done", command: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar server.jar" }, stop: "stop" },
+        config: { 
+          startup: { done: "Done" },
+          command: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar server.jar",
+          stop: "stop" 
+        },
         startup: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar {{SERVER_JARFILE}}"
       },
       {
@@ -329,7 +334,11 @@ export class MemStorage implements IStorage {
         name: "Paper",
         description: "High performance Minecraft fork",
         dockerImage: "ghcr.io/pterodactyl/yolks:java_17",
-        config: { startup: { done: "Done" }, stop: "stop", startup: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar paper.jar" },
+        config: { 
+          startup: { done: "Done" },
+          command: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar paper.jar", 
+          stop: "stop"
+        },
         startup: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar {{SERVER_JARFILE}}"
       },
       {
@@ -339,7 +348,11 @@ export class MemStorage implements IStorage {
         name: "Counter-Strike 2",
         description: "CS2 Dedicated Server",
         dockerImage: "ghcr.io/pterodactyl/games:source",
-        config: { startup: { done: "game server ready" }, stop: "quit", startup: "./cs2.sh -console -game csgo +map de_dust2" },
+        config: { 
+          startup: { done: "game server ready" },
+          command: "./cs2.sh -console -game csgo +map de_dust2",
+          stop: "quit"
+        },
         startup: "./cs2.sh -console -game csgo +map {{SRCDS_MAP}} +ip {{SERVER_IP}} +port {{SERVER_PORT}}"
       },
       {
@@ -349,7 +362,11 @@ export class MemStorage implements IStorage {
         name: "Teamspeak 3",
         description: "Teamspeak 3 voice server",
         dockerImage: "ghcr.io/pterodactyl/yolks:debian",
-        config: { startup: { done: "listening on" }, stop: "q", startup: "./ts3server_minimal_runscript.sh" },
+        config: { 
+          startup: { done: "listening on" },
+          command: "./ts3server_minimal_runscript.sh",
+          stop: "q"
+        },
         startup: "./ts3server_minimal_runscript.sh license_accepted=1 query_port={{SERVER_PORT}} filetransfer_port={{FILE_TRANSFER}} port={{VOICE_PORT}}"
       }
     ];
@@ -768,35 +785,27 @@ export class MemStorage implements IStorage {
 
   async syncPterodactylServers(userId: number, pterodactylServers: PterodactylServer[]): Promise<Server[]> {
     const existingServers = await this.getServers(userId);
-    const results: Server[] = [];
+    const existingServersByPterodactylId = new Map<string, Server>();
+    existingServers.forEach(server => existingServersByPterodactylId.set(server.pterodactylId, server));
     
-    // Process each pterodactyl server
+    const syncedServers: Server[] = [];
+    
+    // Process each server from Pterodactyl
     for (const ptero of pterodactylServers) {
-      // Check if this server already exists in our system
-      let server = existingServers.find(s => s.pterodactylId === ptero.attributes.identifier);
+      const pterodactylId = ptero.attributes.identifier;
+      const existingServer = existingServersByPterodactylId.get(pterodactylId);
       
-      if (server) {
-        // Update existing server
-        server.name = ptero.attributes.name;
-        server.description = ptero.attributes.description || server.description;
-        server.node = ptero.attributes.node;
-        server.ipAddress = ptero.attributes.allocation.ip;
-        server.port = ptero.attributes.allocation.port;
-        server.memoryLimit = ptero.attributes.limits.memory;
-        server.diskLimit = ptero.attributes.limits.disk;
-        server.cpuLimit = ptero.attributes.limits.cpu;
-        server.status = ptero.attributes.status.toLowerCase();
-        
-        this.serversData.set(server.id, server);
-      } else {
-        // Create new server
-        const newServer: InsertServer = {
-          userId,
-          pterodactylId: ptero.attributes.identifier,
+      // Determine game type based on nest/egg IDs
+      const gameType = `${ptero.attributes.nest}/${ptero.attributes.egg}`;
+      
+      if (existingServer) {
+        // Update existing server with latest data from Pterodactyl
+        const updatedServer = {
+          ...existingServer,
           name: ptero.attributes.name,
-          description: ptero.attributes.description || "",
+          description: ptero.attributes.description || existingServer.description,
           node: ptero.attributes.node,
-          gameType: "", // To be determined from attributes or additional API calls
+          gameType: gameType,
           status: ptero.attributes.status.toLowerCase(),
           ipAddress: ptero.attributes.allocation.ip,
           port: ptero.attributes.allocation.port,
@@ -805,13 +814,42 @@ export class MemStorage implements IStorage {
           cpuLimit: ptero.attributes.limits.cpu
         };
         
-        server = await this.createServer(newServer);
+        this.serversData.set(existingServer.id, updatedServer);
+        syncedServers.push(updatedServer);
+      } else {
+        // Create new server record in our database
+        const newServer: InsertServer = {
+          userId,
+          pterodactylId,
+          name: ptero.attributes.name,
+          description: ptero.attributes.description || "",
+          node: ptero.attributes.node,
+          gameType: gameType,
+          status: ptero.attributes.status.toLowerCase(),
+          ipAddress: ptero.attributes.allocation.ip,
+          port: ptero.attributes.allocation.port,
+          memoryLimit: ptero.attributes.limits.memory,
+          diskLimit: ptero.attributes.limits.disk,
+          cpuLimit: ptero.attributes.limits.cpu
+        };
+        
+        const createdServer = await this.createServer(newServer);
+        syncedServers.push(createdServer);
       }
-      
-      results.push(server);
     }
     
-    return results;
+    // Check for servers that exist in our database but not in Pterodactyl anymore
+    // These would be servers that were deleted directly in Pterodactyl
+    const pterodactylIds = new Set(pterodactylServers.map(s => s.attributes.identifier));
+    const missingServers = existingServers.filter(server => !pterodactylIds.has(server.pterodactylId));
+    
+    // Update status of missing servers to "deleted" or similar
+    for (const server of missingServers) {
+      const updatedServer = await this.updateServerStatus(server.id, "deleted");
+      syncedServers.push(updatedServer);
+    }
+    
+    return syncedServers;
   }
 
   async getUserSettings(userId: number): Promise<any> {
@@ -832,74 +870,346 @@ export class MemStorage implements IStorage {
 
   // Implementation for new Pterodactyl API integration methods
   async createPterodactylUser(userId: number): Promise<number> {
-    // This method would use the Pterodactyl API to create a user
-    // For the in-memory implementation, we'll just return a fake ID
-    // In a real implementation, this would call the Pterodactyl API
+    // This method creates a new user in Pterodactyl and returns the Pterodactyl user ID
     
     const user = await this.getUser(userId);
     if (!user) {
       throw new Error(`User with ID ${userId} not found`);
     }
     
-    // Create a fake pterodactyl ID
-    const pterodactylId = Math.floor(Math.random() * 10000) + 1;
+    if (!config.pterodactyl.adminApiKey) {
+      throw new Error("Pterodactyl admin API key is not configured");
+    }
     
-    // Update the user with the new Pterodactyl ID
-    const updatedUser = { ...user, pterodactylId };
-    this.usersData.set(userId, updatedUser);
+    // Prepare the request to Pterodactyl API
+    const pterodactylEndpoint = "users";
+    const method = "POST";
+    const apiKey = config.pterodactyl.adminApiKey;
     
-    return pterodactylId;
+    const body = {
+      username: user.username,
+      email: user.email,
+      first_name: user.fullName ? user.fullName.split(" ")[0] : user.username,
+      last_name: user.fullName ? user.fullName.split(" ").slice(1).join(" ") : "",
+      language: "en",
+      root_admin: false,
+      password: randomBytes(16).toString("hex") // Generate a random password (user will use client app)
+    };
+    
+    try {
+      // Make the request to Pterodactyl API using the helper function
+      const response = await pterodactylRequest(pterodactylEndpoint, apiKey, method, body) as any;
+      
+      if (!response.attributes || !response.attributes.id) {
+        throw new Error("Invalid response format from Pterodactyl API");
+      }
+      
+      const pterodactylId = response.attributes.id;
+      
+      // Update the user with the new Pterodactyl ID
+      const updatedUser = { ...user, pterodactylId };
+      this.usersData.set(userId, updatedUser);
+      
+      return pterodactylId;
+    } catch (error) {
+      // Handle specific Pterodactyl API errors
+      throw new Error(`Failed to create user in Pterodactyl: ${error.message}`);
+    }
   }
   
   async createPterodactylServer(userId: number, serverData: CreateServerData): Promise<Server> {
-    // This method would use the Pterodactyl API to create a server
-    // For the in-memory implementation, we'll just create a local record
-    // In a real implementation, this would call the Pterodactyl API
+    // Creates a new server via the Pterodactyl API and stores a reference in our database
     
     const user = await this.getUser(userId);
     if (!user) {
       throw new Error(`User with ID ${userId} not found`);
     }
     
-    // Generate a fake pterodactyl server ID (UUID-like)
-    const pterodactylId = Array(8).fill(0).map(() => Math.random().toString(36).substring(2, 10)).join('-');
+    // Check if the user has a Pterodactyl ID
+    if (!user.pterodactylId) {
+      // Create a new Pterodactyl user if user doesn't have one
+      await this.createPterodactylUser(userId);
+      // Refresh user data
+      const updatedUser = await this.getUser(userId);
+      if (!updatedUser || !updatedUser.pterodactylId) {
+        throw new Error("Failed to create Pterodactyl user");
+      }
+      user.pterodactylId = updatedUser.pterodactylId;
+    }
     
-    // Create the server record
-    const newServer: InsertServer = {
-      userId,
-      pterodactylId,
+    if (!config.pterodactyl.adminApiKey) {
+      throw new Error("Pterodactyl admin API key is not configured");
+    }
+    
+    // Prepare the server creation request
+    const endpoint = "servers";
+    const method = "POST";
+    const apiKey = config.pterodactyl.adminApiKey;
+    
+    // Map plan limits to Pterodactyl server allocation
+    const userSub = await this.getUserSubscription(userId);
+    if (!userSub) {
+      throw new Error("User does not have an active subscription");
+    }
+    
+    const plan = await this.getSubscriptionPlanById(userSub.planId);
+    if (!plan) {
+      throw new Error("Subscription plan not found");
+    }
+    
+    // Use the selected egg to get docker image and startup information
+    const egg = (await this.getServerEggsByNestId(serverData.nestId))
+      .find(e => e.eggId === serverData.eggId);
+    
+    if (!egg) {
+      throw new Error(`Server egg not found: nest ${serverData.nestId}, egg ${serverData.eggId}`);
+    }
+    
+    // Create the server creation payload for Pterodactyl
+    const serverCreationPayload = {
       name: serverData.name,
-      description: "",
-      node: `node-${serverData.nodeId}`,
-      gameType: `${serverData.nestId}/${serverData.eggId}`,
-      status: "installing",
-      ipAddress: "127.0.0.1",
-      port: 25565 + Math.floor(Math.random() * 1000),
-      memoryLimit: serverData.memory,
-      diskLimit: serverData.disk,
-      cpuLimit: serverData.cpu,
+      user: user.pterodactylId,
+      egg: serverData.eggId,
+      docker_image: egg.dockerImage,
+      startup: egg.startup,
+      environment: serverData.environment || {},
+      limits: {
+        memory: serverData.memory,
+        swap: 0,
+        disk: serverData.disk,
+        io: 500,
+        cpu: serverData.cpu
+      },
+      feature_limits: {
+        databases: 2,
+        allocations: 1,
+        backups: plan.backupLimit === 0 ? 10 : plan.backupLimit // Convert unlimited (0) to 10
+      },
+      allocation: {
+        default: config.pterodactyl.defaultAllocationId
+      },
+      deploy: {
+        locations: [serverData.locationId],
+        dedicated_ip: false,
+        port_range: []
+      }
     };
     
-    return await this.createServer(newServer);
+    try {
+      // Make the request to Pterodactyl API
+      const response = await pterodactylRequest(endpoint, apiKey, method, serverCreationPayload);
+      
+      if (!response.attributes) {
+        throw new Error("Invalid response format from Pterodactyl API");
+      }
+      
+      // Extract server data from response
+      const pterodactylServerData = response.attributes;
+      
+      // Create a record in our database
+      const newServer: InsertServer = {
+        userId,
+        pterodactylId: pterodactylServerData.identifier,
+        name: pterodactylServerData.name,
+        description: pterodactylServerData.description || "",
+        node: pterodactylServerData.node,
+        gameType: `${serverData.nestId}/${serverData.eggId}`,
+        status: pterodactylServerData.status,
+        ipAddress: pterodactylServerData.allocation?.ip || "pending",
+        port: pterodactylServerData.allocation?.port || 0,
+        memoryLimit: pterodactylServerData.limits.memory,
+        diskLimit: pterodactylServerData.limits.disk,
+        cpuLimit: pterodactylServerData.limits.cpu,
+      };
+      
+      return await this.createServer(newServer);
+    } catch (error: any) {
+      throw new Error(`Failed to create server in Pterodactyl: ${error.message}`);
+    }
   }
   
   // Server location methods
   async getServerLocations(): Promise<ServerLocation[]> {
+    // Try to fetch from Pterodactyl API if admin API key is available
+    if (config.pterodactyl.adminApiKey) {
+      try {
+        const endpoint = "locations";
+        const apiKey = config.pterodactyl.adminApiKey;
+        
+        const response = await pterodactylRequest(endpoint, apiKey);
+        
+        if (response.data && Array.isArray(response.data)) {
+          // Clear existing data
+          this.serverLocationsData.clear();
+          
+          // Process and store the locations
+          const locations: ServerLocation[] = [];
+          for (const item of response.data) {
+            const locationId = this.getNextId('serverLocations');
+            const location: ServerLocation = {
+              id: locationId,
+              locationId: item.attributes.id,
+              shortCode: item.attributes.short,
+              name: item.attributes.long || item.attributes.short,
+              description: item.attributes.description || ""
+            };
+            
+            this.serverLocationsData.set(locationId, location);
+            locations.push(location);
+          }
+          
+          return locations;
+        }
+      } catch (error) {
+        // If API request fails, fall back to stored data
+        console.error("Failed to fetch locations from Pterodactyl API:", error);
+      }
+    }
+    
+    // Fall back to stored data if API request fails or admin key is not available
     return Array.from(this.serverLocationsData.values());
   }
   
   // Server nodes methods
   async getServerNodes(): Promise<ServerNode[]> {
+    // Try to fetch from Pterodactyl API if admin API key is available
+    if (config.pterodactyl.adminApiKey) {
+      try {
+        const endpoint = "nodes";
+        const apiKey = config.pterodactyl.adminApiKey;
+        
+        const response = await pterodactylRequest(endpoint, apiKey);
+        
+        if (response.data && Array.isArray(response.data)) {
+          // Clear existing data
+          this.serverNodesData.clear();
+          
+          // Process and store the nodes
+          const nodes: ServerNode[] = [];
+          for (const item of response.data) {
+            const nodeId = this.getNextId('serverNodes');
+            const node: ServerNode = {
+              id: nodeId,
+              nodeId: item.attributes.id,
+              locationId: item.attributes.location_id,
+              name: item.attributes.name,
+              fqdn: item.attributes.fqdn,
+              scheme: item.attributes.scheme,
+              memory: item.attributes.memory,
+              memoryOverallocate: item.attributes.memory_overallocate,
+              disk: item.attributes.disk,
+              diskOverallocate: item.attributes.disk_overallocate,
+              uploadLimit: item.attributes.upload_size,
+              daemonBase: item.attributes.daemon_base,
+              daemonSftp: item.attributes.daemon_sftp,
+              daemonListen: item.attributes.daemon_listen,
+              maintenance: item.attributes.maintenance_mode
+            };
+            
+            this.serverNodesData.set(nodeId, node);
+            nodes.push(node);
+          }
+          
+          return nodes;
+        }
+      } catch (error) {
+        // If API request fails, fall back to stored data
+        console.error("Failed to fetch nodes from Pterodactyl API:", error);
+      }
+    }
+    
+    // Fall back to stored data if API request fails or admin key is not available
     return Array.from(this.serverNodesData.values());
   }
   
   // Server nests methods
   async getServerNests(): Promise<ServerNest[]> {
+    // Try to fetch from Pterodactyl API if admin API key is available
+    if (config.pterodactyl.adminApiKey) {
+      try {
+        const endpoint = "nests";
+        const apiKey = config.pterodactyl.adminApiKey;
+        
+        const response = await pterodactylRequest(endpoint, apiKey);
+        
+        if (response.data && Array.isArray(response.data)) {
+          // Clear existing data
+          this.serverNestsData.clear();
+          
+          // Process and store the nests
+          const nests: ServerNest[] = [];
+          for (const item of response.data) {
+            const nestId = this.getNextId('serverNests');
+            const nest: ServerNest = {
+              id: nestId,
+              nestId: item.attributes.id,
+              name: item.attributes.name,
+              description: item.attributes.description,
+              author: item.attributes.author
+            };
+            
+            this.serverNestsData.set(nestId, nest);
+            nests.push(nest);
+          }
+          
+          return nests;
+        }
+      } catch (error) {
+        // If API request fails, fall back to stored data
+        console.error("Failed to fetch nests from Pterodactyl API:", error);
+      }
+    }
+    
+    // Fall back to stored data if API request fails or admin key is not available
     return Array.from(this.serverNestsData.values());
   }
   
   // Server eggs methods
   async getServerEggsByNestId(nestId: number): Promise<ServerEgg[]> {
+    // Try to fetch from Pterodactyl API if admin API key is available
+    if (config.pterodactyl.adminApiKey) {
+      try {
+        const endpoint = `nests/${nestId}/eggs`;
+        const apiKey = config.pterodactyl.adminApiKey;
+        
+        const response = await pterodactylRequest(endpoint, apiKey);
+        
+        if (response.data && Array.isArray(response.data)) {
+          // Clear existing eggs for this nest
+          const eggsToRemove = Array.from(this.serverEggsData.values())
+            .filter(egg => egg.nestId === nestId)
+            .map(egg => egg.id);
+          
+          eggsToRemove.forEach(id => this.serverEggsData.delete(id));
+          
+          // Process and store the eggs
+          const eggs: ServerEgg[] = [];
+          for (const item of response.data) {
+            const eggId = this.getNextId('serverEggs');
+            const egg: ServerEgg = {
+              id: eggId,
+              eggId: item.attributes.id,
+              nestId,
+              name: item.attributes.name,
+              description: item.attributes.description,
+              dockerImage: item.attributes.docker_image,
+              config: item.attributes.config || {},
+              startup: item.attributes.startup
+            };
+            
+            this.serverEggsData.set(eggId, egg);
+            eggs.push(egg);
+          }
+          
+          return eggs;
+        }
+      } catch (error) {
+        // If API request fails, fall back to stored data
+        console.error(`Failed to fetch eggs for nest ${nestId} from Pterodactyl API:`, error);
+      }
+    }
+    
+    // Fall back to stored data if API request fails or admin key is not available
     return Array.from(this.serverEggsData.values()).filter(egg => egg.nestId === nestId);
   }
   

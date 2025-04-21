@@ -10,7 +10,7 @@ import logger from "./utils/logger";
 const log = logger.createLogger("pterodactyl");
 
 // Helper function to make API requests to Pterodactyl
-async function pterodactylRequest(
+export async function pterodactylRequest(
   endpoint: string,
   apiKey: string,
   method: string = "GET",
@@ -55,7 +55,7 @@ async function pterodactylRequest(
 }
 
 // Helper function for client API requests (using user's API key)
-async function pterodactylClientRequest(
+export async function pterodactylClientRequest(
   endpoint: string,
   apiKey: string,
   method: string = "GET",
