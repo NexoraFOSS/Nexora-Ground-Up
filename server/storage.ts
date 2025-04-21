@@ -997,7 +997,7 @@ export class MemStorage implements IStorage {
     
     try {
       // Make the request to Pterodactyl API
-      const response = await pterodactylRequest(endpoint, apiKey, method, serverCreationPayload);
+      const response = await pterodactylRequest(endpoint, apiKey, method, serverCreationPayload) as any;
       
       if (!response.attributes) {
         throw new Error("Invalid response format from Pterodactyl API");
