@@ -3,11 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { usePterodactyl } from '@/hooks/use-pterodactyl';
-import { useNavigate } from 'wouter';
+import { useLocation } from 'wouter';
 
 export function QuickActions() {
   const { servers, startServerMutation, stopServerMutation, restartServerMutation, isPowerActionPending } = usePterodactyl();
-  const [_, navigate] = useNavigate();
+  const [_, navigate] = useLocation();
   
   // Get the most recently used server (first one for demo)
   const recentServer = servers?.[0];

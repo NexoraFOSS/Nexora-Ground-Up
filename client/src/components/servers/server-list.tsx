@@ -144,7 +144,7 @@ export function ServerList() {
                       <div className="flex items-center">
                         <div className="h-8 w-8 rounded flex items-center justify-center bg-dark-surface">
                           {gameIcon.icon ? (
-                            <img src={gameIcon.icon} alt={server.gameType} className="h-8 w-8 rounded" />
+                            <img src={gameIcon.icon} alt={server.gameType || 'Game server'} className="h-8 w-8 rounded" />
                           ) : (
                             <i className={`${gameIcon.fallback} text-xl text-gray-400`}></i>
                           )}
