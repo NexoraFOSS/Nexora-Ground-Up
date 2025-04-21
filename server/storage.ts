@@ -8,13 +8,21 @@ import {
   userSubscriptions, type UserSubscription,
   invoices, type Invoice,
   loginHistory, type LoginHistory,
-  apiKeys, type ApiKey 
+  apiKeys, type ApiKey,
+  // New schema types
+  serverBackups, type ServerBackup, type InsertServerBackup,
+  serverLocations, type ServerLocation, type InsertServerLocation,
+  serverNodes, type ServerNode, type InsertServerNode,
+  serverNests, type ServerNest, type InsertServerNest,
+  serverEggs, type ServerEgg, type InsertServerEgg,
+  type CreateServerData
 } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { PterodactylServer, PterodactylApiResponse, ServerUsage } from "./types";
+import config from "../config.js";
 
 const scryptAsync = promisify(scrypt);
 const MemoryStore = createMemoryStore(session);
@@ -75,6 +83,19 @@ export interface IStorage {
 
   // Pterodactyl methods
   syncPterodactylServers(userId: number, pterodactylServers: PterodactylServer[]): Promise<Server[]>;
+  createPterodactylUser(userId: number): Promise<number>;
+  createPterodactylServer(userId: number, serverData: CreateServerData): Promise<Server>;
+  
+  // Pterodactyl infrastructure methods
+  getServerLocations(): Promise<ServerLocation[]>;
+  getServerNodes(): Promise<ServerNode[]>;
+  getServerNests(): Promise<ServerNest[]>;
+  getServerEggsByNestId(nestId: number): Promise<ServerEgg[]>;
+  
+  // Server backups methods
+  getServerBackups(serverId: number): Promise<ServerBackup[]>;
+  createServerBackup(backup: InsertServerBackup): Promise<ServerBackup>;
+  updateServerBackup(id: number, data: Partial<ServerBackup>): Promise<ServerBackup>;
   
   // Settings methods
   getUserSettings(userId: number): Promise<any>;
@@ -94,6 +115,11 @@ export class MemStorage implements IStorage {
   private invoicesData: Map<number, Invoice>;
   private loginHistoryData: Map<number, LoginHistory[]>;
   private apiKeysData: Map<number, ApiKey>;
+  private serverLocationsData: Map<number, ServerLocation>;
+  private serverNodesData: Map<number, ServerNode>;
+  private serverNestsData: Map<number, ServerNest>;
+  private serverEggsData: Map<number, ServerEgg>;
+  private serverBackupsData: Map<number, ServerBackup[]>;
   
   currentId: { [key: string]: number };
   sessionStore: session.SessionStore;
@@ -109,6 +135,11 @@ export class MemStorage implements IStorage {
     this.invoicesData = new Map();
     this.loginHistoryData = new Map();
     this.apiKeysData = new Map();
+    this.serverLocationsData = new Map();
+    this.serverNodesData = new Map();
+    this.serverNestsData = new Map();
+    this.serverEggsData = new Map();
+    this.serverBackupsData = new Map();
     
     this.currentId = {
       users: 1,
@@ -120,7 +151,12 @@ export class MemStorage implements IStorage {
       userSubscriptions: 1,
       invoices: 1,
       loginHistory: 1,
-      apiKeys: 1
+      apiKeys: 1,
+      serverBackups: 1,
+      serverLocations: 1,
+      serverNodes: 1,
+      serverNests: 1,
+      serverEggs: 1
     };
     
     this.sessionStore = new MemoryStore({
@@ -178,6 +214,146 @@ export class MemStorage implements IStorage {
     this.subscriptionPlansData.set(basicPlan.id, basicPlan);
     this.subscriptionPlansData.set(premiumPlan.id, premiumPlan);
     this.subscriptionPlansData.set(professionalPlan.id, professionalPlan);
+    
+    // Initialize server locations
+    const locations = [
+      {
+        id: this.getNextId('serverLocations'),
+        locationId: 1,
+        shortCode: "us",
+        name: "North America",
+        description: "Chicago, IL, USA"
+      },
+      {
+        id: this.getNextId('serverLocations'),
+        locationId: 2,
+        shortCode: "eu",
+        name: "Europe",
+        description: "London, UK"
+      },
+      {
+        id: this.getNextId('serverLocations'),
+        locationId: 3,
+        shortCode: "ap",
+        name: "Asia Pacific",
+        description: "Singapore"
+      }
+    ];
+    
+    locations.forEach(location => this.serverLocationsData.set(location.id, location));
+    
+    // Initialize server nodes
+    const nodes = [
+      {
+        id: this.getNextId('serverNodes'),
+        nodeId: 1,
+        locationId: 1,
+        name: "US Node 1",
+        fqdn: "node-us1.nexora.com",
+        scheme: "https",
+        memory: 65536,
+        memoryOverallocate: 0,
+        disk: 1048576,
+        diskOverallocate: 0,
+        uploadLimit: 100,
+        daemonBase: "/var/lib/pterodactyl/volumes",
+        daemonSftp: 2022,
+        daemonListen: 8080,
+        maintenance: false
+      },
+      {
+        id: this.getNextId('serverNodes'),
+        nodeId: 2,
+        locationId: 2,
+        name: "EU Node 1",
+        fqdn: "node-eu1.nexora.com",
+        scheme: "https",
+        memory: 65536,
+        memoryOverallocate: 0,
+        disk: 1048576,
+        diskOverallocate: 0,
+        uploadLimit: 100,
+        daemonBase: "/var/lib/pterodactyl/volumes",
+        daemonSftp: 2022,
+        daemonListen: 8080,
+        maintenance: false
+      }
+    ];
+    
+    nodes.forEach(node => this.serverNodesData.set(node.id, node));
+    
+    // Initialize server nests
+    const nests = [
+      {
+        id: this.getNextId('serverNests'),
+        nestId: 1,
+        name: "Minecraft",
+        description: "All Minecraft server types",
+        author: "Nexora"
+      },
+      {
+        id: this.getNextId('serverNests'),
+        nestId: 2,
+        name: "Source Engine",
+        description: "Games using the Source engine",
+        author: "Nexora"
+      },
+      {
+        id: this.getNextId('serverNests'),
+        nestId: 5,
+        name: "Voice Servers",
+        description: "Voice communication servers",
+        author: "Nexora"
+      }
+    ];
+    
+    nests.forEach(nest => this.serverNestsData.set(nest.id, nest));
+    
+    // Initialize server eggs
+    const eggs = [
+      {
+        id: this.getNextId('serverEggs'),
+        eggId: 1,
+        nestId: 1,
+        name: "Vanilla Minecraft",
+        description: "Minecraft Vanilla server",
+        dockerImage: "ghcr.io/pterodactyl/yolks:java_17",
+        config: { startup: { done: "Done" }, stop: "stop", startup: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar server.jar" },
+        startup: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar {{SERVER_JARFILE}}"
+      },
+      {
+        id: this.getNextId('serverEggs'),
+        eggId: 2,
+        nestId: 1,
+        name: "Paper",
+        description: "High performance Minecraft fork",
+        dockerImage: "ghcr.io/pterodactyl/yolks:java_17",
+        config: { startup: { done: "Done" }, stop: "stop", startup: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar paper.jar" },
+        startup: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar {{SERVER_JARFILE}}"
+      },
+      {
+        id: this.getNextId('serverEggs'),
+        eggId: 5,
+        nestId: 2,
+        name: "Counter-Strike 2",
+        description: "CS2 Dedicated Server",
+        dockerImage: "ghcr.io/pterodactyl/games:source",
+        config: { startup: { done: "game server ready" }, stop: "quit", startup: "./cs2.sh -console -game csgo +map de_dust2" },
+        startup: "./cs2.sh -console -game csgo +map {{SRCDS_MAP}} +ip {{SERVER_IP}} +port {{SERVER_PORT}}"
+      },
+      {
+        id: this.getNextId('serverEggs'),
+        eggId: 15,
+        nestId: 5,
+        name: "Teamspeak 3",
+        description: "Teamspeak 3 voice server",
+        dockerImage: "ghcr.io/pterodactyl/yolks:debian",
+        config: { startup: { done: "listening on" }, stop: "q", startup: "./ts3server_minimal_runscript.sh" },
+        startup: "./ts3server_minimal_runscript.sh license_accepted=1 query_port={{SERVER_PORT}} filetransfer_port={{FILE_TRANSFER}} port={{VOICE_PORT}}"
+      }
+    ];
+    
+    eggs.forEach(egg => this.serverEggsData.set(egg.id, egg));
   }
 
   private getNextId(entityName: string): number {
@@ -631,6 +807,135 @@ export class MemStorage implements IStorage {
       twoFactorEnabled: user.twoFactorEnabled,
       pterodactylApiKey: user.pterodactylApiKey ? "•••••••••••••••••••" : null
     };
+  }
+
+  // Implementation for new Pterodactyl API integration methods
+  async createPterodactylUser(userId: number): Promise<number> {
+    // This method would use the Pterodactyl API to create a user
+    // For the in-memory implementation, we'll just return a fake ID
+    // In a real implementation, this would call the Pterodactyl API
+    
+    const user = await this.getUser(userId);
+    if (!user) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
+    
+    // Create a fake pterodactyl ID
+    const pterodactylId = Math.floor(Math.random() * 10000) + 1;
+    
+    // Update the user with the new Pterodactyl ID
+    const updatedUser = { ...user, pterodactylId };
+    this.usersData.set(userId, updatedUser);
+    
+    return pterodactylId;
+  }
+  
+  async createPterodactylServer(userId: number, serverData: CreateServerData): Promise<Server> {
+    // This method would use the Pterodactyl API to create a server
+    // For the in-memory implementation, we'll just create a local record
+    // In a real implementation, this would call the Pterodactyl API
+    
+    const user = await this.getUser(userId);
+    if (!user) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
+    
+    // Generate a fake pterodactyl server ID (UUID-like)
+    const pterodactylId = Array(8).fill(0).map(() => Math.random().toString(36).substring(2, 10)).join('-');
+    
+    // Create the server record
+    const newServer: InsertServer = {
+      userId,
+      pterodactylId,
+      name: serverData.name,
+      description: "",
+      node: `node-${serverData.nodeId}`,
+      gameType: `${serverData.nestId}/${serverData.eggId}`,
+      status: "installing",
+      ipAddress: "127.0.0.1",
+      port: 25565 + Math.floor(Math.random() * 1000),
+      memoryLimit: serverData.memory,
+      diskLimit: serverData.disk,
+      cpuLimit: serverData.cpu,
+    };
+    
+    return await this.createServer(newServer);
+  }
+  
+  // Server location methods
+  async getServerLocations(): Promise<ServerLocation[]> {
+    return Array.from(this.serverLocationsData.values());
+  }
+  
+  // Server nodes methods
+  async getServerNodes(): Promise<ServerNode[]> {
+    return Array.from(this.serverNodesData.values());
+  }
+  
+  // Server nests methods
+  async getServerNests(): Promise<ServerNest[]> {
+    return Array.from(this.serverNestsData.values());
+  }
+  
+  // Server eggs methods
+  async getServerEggsByNestId(nestId: number): Promise<ServerEgg[]> {
+    return Array.from(this.serverEggsData.values()).filter(egg => egg.nestId === nestId);
+  }
+  
+  // Server backups methods
+  async getServerBackups(serverId: number): Promise<ServerBackup[]> {
+    return this.serverBackupsData.get(serverId) || [];
+  }
+  
+  async createServerBackup(backup: InsertServerBackup): Promise<ServerBackup> {
+    const id = this.getNextId('serverBackups');
+    const now = new Date();
+    
+    const newBackup: ServerBackup = {
+      ...backup,
+      id,
+      createdAt: now,
+      completed: false,
+      completedAt: null
+    };
+    
+    const backups = this.serverBackupsData.get(backup.serverId) || [];
+    backups.push(newBackup);
+    this.serverBackupsData.set(backup.serverId, backups);
+    
+    return newBackup;
+  }
+  
+  async updateServerBackup(id: number, data: Partial<ServerBackup>): Promise<ServerBackup> {
+    // Find the backup across all servers
+    let targetBackup: ServerBackup | null = null;
+    let serverId: number | null = null;
+    
+    for (const [sid, backups] of this.serverBackupsData.entries()) {
+      const backup = backups.find(b => b.id === id);
+      if (backup) {
+        targetBackup = backup;
+        serverId = sid;
+        break;
+      }
+    }
+    
+    if (!targetBackup || serverId === null) {
+      throw new Error(`Backup with ID ${id} not found`);
+    }
+    
+    // Update the backup
+    const updatedBackup = { ...targetBackup, ...data };
+    
+    // Replace in the collection
+    const backups = this.serverBackupsData.get(serverId) || [];
+    const index = backups.findIndex(b => b.id === id);
+    if (index !== -1) {
+      backups[index] = updatedBackup;
+      this.serverBackupsData.set(serverId, backups);
+    }
+    
+    return updatedBackup;
   }
 }
 
