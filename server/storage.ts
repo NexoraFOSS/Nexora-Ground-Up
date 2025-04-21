@@ -123,7 +123,7 @@ export class MemStorage implements IStorage {
   private serverBackupsData: Map<number, ServerBackup[]>;
   
   currentId: { [key: string]: number };
-  sessionStore: session.SessionStore;
+  sessionStore: SessionStore;
 
   constructor() {
     this.usersData = new Map();
@@ -319,7 +319,7 @@ export class MemStorage implements IStorage {
         name: "Vanilla Minecraft",
         description: "Minecraft Vanilla server",
         dockerImage: "ghcr.io/pterodactyl/yolks:java_17",
-        config: { startup: { done: "Done" }, stop: "stop", startup: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar server.jar" },
+        config: { startup: { done: "Done", command: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar server.jar" }, stop: "stop" },
         startup: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar {{SERVER_JARFILE}}"
       },
       {
@@ -407,7 +407,17 @@ export class MemStorage implements IStorage {
       password,
       createdAt: now,
       verified: false,
-      twoFactorEnabled: false
+      twoFactorEnabled: false,
+      // Add all required fields with appropriate defaults
+      pterodactylId: null,
+      pterodactylApiKey: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      verificationToken: null,
+      resetToken: null,
+      resetTokenExpiry: null,
+      twoFactorSecret: null,
+      fullName: insertUser.fullName || null
     };
     
     this.usersData.set(id, user);
@@ -499,7 +509,12 @@ export class MemStorage implements IStorage {
     const newServer: Server = { 
       ...server, 
       id,
-      createdAt: now
+      createdAt: now,
+      // Ensure all required fields are properly set with defaults
+      status: server.status || "installing",
+      description: server.description || null,
+      node: server.node || null,
+      gameType: server.gameType || null
     };
     
     this.serversData.set(id, newServer);
@@ -583,7 +598,9 @@ export class MemStorage implements IStorage {
       id,
       createdAt: now,
       updatedAt: now,
-      status: "open"
+      status: "open",
+      // Ensure priority is set
+      priority: ticket.priority || "medium"
     };
     
     this.ticketsData.set(id, newTicket);
@@ -614,7 +631,9 @@ export class MemStorage implements IStorage {
     const newReply: TicketReply = { 
       ...reply, 
       id,
-      createdAt: now
+      createdAt: now,
+      // Ensure isStaff is set
+      isStaff: reply.isStaff || false
     };
     
     const replies = this.ticketRepliesData.get(reply.ticketId) || [];
@@ -698,6 +717,7 @@ export class MemStorage implements IStorage {
       name,
       token,
       createdAt: now,
+      lastUsed: null,
       expiresAt: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000) // 1 year expiry
     };
     
@@ -897,7 +917,11 @@ export class MemStorage implements IStorage {
       id,
       createdAt: now,
       completed: false,
-      completedAt: null
+      completedAt: null,
+      // Ensure all required fields are properly set
+      name: backup.name || null,
+      url: backup.url || null,
+      size: backup.size || null
     };
     
     const backups = this.serverBackupsData.get(backup.serverId) || [];
