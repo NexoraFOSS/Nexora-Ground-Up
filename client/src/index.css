@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-dark-bg text-gray-200;
+  }
+  
+  :root {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    
+    --primary: 246 80% 60%;
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 217 91% 60%;
+    --secondary-foreground: 0 0% 100%;
+    
+    --muted: 223 47% 11%;
+    --muted-foreground: 217.9 10.6% 64.9%;
+    
+    --accent: 262 84% 63%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    
+    --border: 214 32% 14%;
+    --input: 214 32% 27%;
+    --ring: 214 32% 27%;
+    
+    --radius: 0.5rem;
+    
+    --chart-1: 246 80% 60%;
+    --chart-2: 262 84% 63%;
+    --chart-3: 217 91% 60%;
+    --chart-4: 43 96% 58%;
+    --chart-5: 0 84% 60%;
+    
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 210 40% 98%; 
+    --sidebar-primary: 246 80% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 262 84% 63%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 214 32% 14%;
+    --sidebar-ring: 214 32% 27%;
+  }
+
+  /* Custom classes for background colors in the design */
+  .bg-dark-bg {
+    @apply bg-background;
+  }
+
+  .bg-dark-card {
+    @apply bg-card;
+  }
+
+  .bg-dark-surface {
+    @apply bg-muted;
+  }
+
+  /* Utility classes for resource stats */
+  .console-output {
+    height: 300px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+  }
+
+  .chart-container {
+    height: 200px;
+    position: relative;
+  }
+
+  @media (max-width: 768px) {
+    .sidebar {
+      transform: translateX(-100%);
+      transition: transform 0.3s ease;
+    }
+    .sidebar.open {
+      transform: translateX(0);
+    }
+  }
+}
